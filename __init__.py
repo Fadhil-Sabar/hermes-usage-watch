@@ -107,7 +107,15 @@ def _record(ctx: Any, data: dict[str, Any]) -> None:
         path = plugin_data_dir(PLUGIN_NAME) / "last.json"
         path.write_text(json.dumps(data), encoding="utf-8")
     except Exception:  # noqa: BLE001
-        logger.debug("usage-watch: cannot record decision", exc_info=True)
+        import traceback
+
+        try:  # keep the failure inspectable: plugin-data/usage-watch/errors.log
+            from plugins.plugin_storage import plugin_data_dir
+
+            with (plugin_data_dir(PLUGIN_NAME) / "errors.log").open("a", encoding="utf-8") as fh:
+                fh.write(datetime.now(timezone.utc).isoformat(timespec="seconds") + "\n" + traceback.format_exc()[-1500:] + "\n")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _providers(cfg: dict[str, Any]) -> list[str]:
