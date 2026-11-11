@@ -202,12 +202,24 @@ def test_idle_refresh_edits_existing_notice_only(_isolate):
     assert len(ctx.posts) == 1
 
 
-def test_session_end_clears_state(_isolate):
+def test_session_finalize_clears_state(_isolate):
     ctx = FakeCtx(every_n_turns=1, idle_minutes=5, only_when_above=False)
     _turn(ctx)
     assert glue._SESSIONS["s1"].timer is not None
-    glue._on_session_end(session_id="s1")
+    glue._on_session_finalize(session_id=None)  # no id: nothing to drop
+    assert "s1" in glue._SESSIONS
+    glue._on_session_finalize(session_id="s1")
     assert "s1" not in glue._SESSIONS
+
+
+def test_state_survives_across_turns_and_edits_in_place(_isolate):
+    # Regression: state was dropped every turn (on_session_end fires per run_conversation),
+    # so the counter stuck at 1 and every notice was a fresh post.
+    ctx = FakeCtx(every_n_turns=2, idle_minutes=0, only_when_above=False)
+    for _ in range(4):
+        _turn(ctx)
+    assert glue._SESSIONS["s1"].turns == 4
+    assert len(ctx.posts) == 1 and len(ctx.posts[0].texts) == 2  # posted on turn 2, edited on turn 4
 
 
 def test_register_wires_hooks_and_command():
@@ -219,5 +231,5 @@ def test_register_wires_hooks_and_command():
             self.commands[name] = handler
     ctx = RegCtx()
     glue.register(ctx)
-    assert set(ctx.hooks) == {"post_llm_call", "on_session_end"}
+    assert set(ctx.hooks) == {"post_llm_call", "on_session_finalize"}
     assert "usage-watch" in ctx.commands

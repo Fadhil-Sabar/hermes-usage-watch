@@ -5,7 +5,7 @@ author: Fadhil-Sabar
 requires_hermes: ">=0.23.1"
 provides_hooks:
   - post_llm_call
-  - on_session_end
+  - on_session_finalize
 provides_commands:
   - usage-watch
 config_schema:

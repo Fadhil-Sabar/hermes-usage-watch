@@ -290,8 +290,16 @@ def _on_post_llm_call(**kwargs: Any) -> None:
             _record(_CTX, {"event": "error", "session": sid[:12], "trace": traceback.format_exc()[-900:]})
 
 
-def _on_session_end(**kwargs: Any) -> None:
-    sid = str(kwargs.get("session_id") or "default")
+def _on_session_finalize(**kwargs: Any) -> None:
+    """Drop a session's state when the CLI/gateway tears the session down.
+
+    Not ``on_session_end``: that hook fires at the end of every ``run_conversation`` call, i.e.
+    every turn, which would reset the turn counter, drop the notice handle and cancel the idle timer.
+    """
+    raw = kwargs.get("session_id")
+    if not raw:
+        return
+    sid = str(raw)
     with _LOCK:
         st = _SESSIONS.pop(sid, None)
     if st is not None and st.timer is not None:
@@ -345,7 +353,7 @@ def register(ctx: Any) -> None:
     global _CTX
     _CTX = ctx
     ctx.register_hook("post_llm_call", _on_post_llm_call)
-    ctx.register_hook("on_session_end", _on_session_end)
+    ctx.register_hook("on_session_finalize", _on_session_finalize)
     ctx.register_command(
         "usage-watch",
         handler=_command,
