@@ -184,8 +184,11 @@ def _clock() -> tuple[datetime, str]:
 
 
 def _render_line(entries, cfg, *, note: str = "") -> str:
-    now, label = _clock()
-    return render_compact(entries, level=_levels(entries, cfg), now=now, clock_label=label, note=note)
+    if cfg["layout"] == "detail":
+        return _render(entries, cfg, note=note)
+    now, _ = _clock()
+    return render_compact(entries, level=_levels(entries, cfg), now=now, layout=cfg["layout"],
+                          warn=cfg["warn_above_percent"], note=note)
 
 
 def _render(entries, cfg, *, note: str = "") -> str:
@@ -275,7 +278,7 @@ def _on_idle(ctx: Any, sid: str) -> None:
         entries = _collect(cfg)
         if not entries:
             return
-        text = _render_line(entries, cfg, note="(idle)")
+        text = _render_line(entries, cfg, note="idle")
         handle.edit(text)
     except Exception:  # noqa: BLE001
         logger.debug("usage-watch: idle refresh failed", exc_info=True)
@@ -350,7 +353,7 @@ def _command(raw_args: str) -> str:
             f"providers: {', '.join(_providers(cfg)) or '(none)'}",
             f"every_n_turns={cfg['every_n_turns']} idle_minutes={cfg['idle_minutes']} "
             f"warn={cfg['warn_above_percent']}% critical={cfg['critical_above_percent']}% "
-            f"only_when_above={cfg['only_when_above']} mode={cfg['mode']}",
+            f"only_when_above={cfg['only_when_above']} mode={cfg['mode']} layout={cfg['layout']}",
             f"last: {_last_decision(ctx)}",
             f"data_dir_import_error: {_DATA_DIR_ERROR or 'none'}",
             "usage: /usage-watch status | now | on | off",

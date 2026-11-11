@@ -41,3 +41,7 @@ config_schema:
     type: str
     default: "repost"
     description: "repost = each update is a new one-line message; edit = one message per session, edited in place."
+  layout:
+    type: str
+    default: "bar"
+    description: "bar | subtext | quote | detail. One-line layouts show what is left per window; detail is the multi-line view."

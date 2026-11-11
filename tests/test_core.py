@@ -49,7 +49,7 @@ def test_defaults_when_empty():
     assert cfg == {
         "enabled": True, "every_n_turns": 5, "idle_minutes": 5, "providers": ["auto"],
         "warn_above_percent": 80, "critical_above_percent": 95, "only_when_above": True,
-        "mode": "repost",
+        "mode": "repost", "layout": "bar",
     }
 
 
@@ -290,17 +290,39 @@ def test_mode_setting_tolerant():
     assert core.coerce_settings({"mode": "bogus"})["mode"] == "repost"
 
 
-def test_render_compact_one_line_shows_remaining():
-    snap = Snap(windows=(
-        W("Current session", 86.2, NOW + timedelta(hours=1, minutes=12)),
-        W("Current week", 41, NOW + timedelta(days=3, hours=4)),
-        W("Opus week", None, None, scope="model"),
+def _compact_snap():
+    return Snap(windows=(
+        W("Current session", 16, NOW + timedelta(hours=3, minutes=36)),
+        W("Current week", 44, NOW + timedelta(days=5, hours=11)),
+        W("Fable week", 1, NOW + timedelta(days=5), scope="model"),
     ), plan="Max")
-    text = core.render_compact([("anthropic", snap)], level="warning", now=NOW, clock_label="17:00 WIB")
-    assert text == ("> WARN usage anthropic: session 14% left (1h12m) · week 59% left (3d4h)"
-                    " · opus week model n/a · 17:00 WIB")
-    ok = core.render_compact([("a", snap), ("b", Snap(windows=()))], level="ok", now=NOW, note="(idle)")
-    assert ok.startswith("> usage a: ") and " | b: n/a" in ok and ok.endswith(" · (idle)")
+
+
+def test_render_compact_layouts():
+    snap = _compact_snap()
+    prov = "claude-subscription-directsdk-experimental"
+    r = lambda layout, level="ok": core.render_compact([(prov, snap)], level=level, now=NOW, layout=layout)
+    assert r("bar") == "-# 🟢 Claude · session ▰▰▰▰▱ 84% (3h36m) · week ▰▰▰▱▱ 56% (5d)"
+    assert r("subtext") == "-# 🟢 Claude · session 84% (3h36m) · week 56% (5d)"
+    assert r("quote") == "> Claude · session 84% left 3h36m · week 56% left 5d"
+    assert r("bar", "warning").startswith("-# 🟡 ") and r("quote", "critical").startswith("> CRIT ")
+
+
+def test_render_compact_model_window_shown_when_high_and_multi_provider():
+    hot = Snap(windows=(W("Opus week", 90, None, scope="model"), W("Session", None)))
+    text = core.render_compact([("anthropic", _compact_snap()), ("openai-codex", hot)], level="warning",
+                               now=NOW, layout="subtext", note="idle")
+    assert " | Codex · opus week 10% · session n/a · idle" in text
+    assert "fable" not in text
+
+
+def test_fmt_short_and_aliases():
+    assert core.fmt_short(NOW + timedelta(minutes=5), NOW) == "5m"
+    assert core.fmt_short(NOW - timedelta(minutes=5), NOW) == "now"
+    assert core.fmt_short(None, NOW) == ""
+    assert core.provider_label("nous") == "nous"
+    assert core.coerce_settings({"layout": "QUOTE"})["layout"] == "quote"
+    assert core.coerce_settings({"layout": "x"})["layout"] == "bar"
 
 
 # ---------------------------------------------------------------- turn flow (pure simulation)

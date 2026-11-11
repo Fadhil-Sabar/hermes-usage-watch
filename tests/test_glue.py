@@ -103,7 +103,7 @@ def test_every_turn_posts_once_then_edits_in_place(_isolate):
         _turn(ctx)
     assert len(ctx.posts) == 1
     assert len(ctx.posts[0].texts) == 3  # one post, two in-place edits
-    assert ctx.posts[0].texts[-1].startswith("> usage anthropic:")
+    assert ctx.posts[0].texts[-1].startswith("-# 🟢 Claude · ")
 
 
 def test_repost_mode_is_default_and_posts_one_line_each_time(_isolate):
@@ -112,8 +112,14 @@ def test_repost_mode_is_default_and_posts_one_line_each_time(_isolate):
         _turn(ctx)
     assert len(ctx.posts) == 2 and all(len(h.texts) == 1 for h in ctx.posts)
     text = ctx.posts[-1].texts[0]
-    assert "\n" not in text and text.startswith("> usage ") and "% left" in text
+    assert "\n" not in text and text.startswith("-# 🟢 Claude · ") and "▰" in text
     assert glue._SESSIONS["s1"].handle is ctx.posts[-1]  # idle refresh edits the latest one
+
+
+def test_detail_layout_keeps_multiline_view(_isolate):
+    ctx = FakeCtx(every_n_turns=1, idle_minutes=0, only_when_above=False, layout="detail")
+    _turn(ctx)
+    assert ctx.posts[0].texts[0].startswith("Usage OK")
 
 
 def test_every_n_turns_counter(_isolate):
@@ -138,11 +144,11 @@ def test_escalation_warning_then_critical_edits_same_message(_isolate):
     assert ctx.posts == []
     set_pct(85)
     _turn(ctx)
-    assert len(ctx.posts) == 1 and "> WARN usage" in ctx.posts[0].texts[-1]
+    assert len(ctx.posts) == 1 and "-# 🟡 " in ctx.posts[0].texts[-1]
     set_pct(97)
     _turn(ctx)
     assert len(ctx.posts) == 1
-    assert "> CRIT usage" in ctx.posts[0].texts[-1]
+    assert "-# 🔴 " in ctx.posts[0].texts[-1]
 
 
 def test_refused_edit_falls_back_to_a_new_post(_isolate):
@@ -205,7 +211,7 @@ def test_idle_refresh_edits_existing_notice_only(_isolate):
     h = ctx.posts[0]
     _isolate["pct"] = 60
     glue._on_idle(ctx, "s1")
-    assert h.texts[-1].startswith("> usage ") and h.texts[-1].endswith(" WIB (idle)")
+    assert h.texts[-1].startswith("-# ") and h.texts[-1].endswith(" · idle")
     # no handle yet: idle must not post anything
     glue._SESSIONS["other"] = glue.SessionWatch()
     glue._on_idle(ctx, "other")

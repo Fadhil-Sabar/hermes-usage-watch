@@ -11,15 +11,19 @@ active session when it gets high, with the time until the window resets.
 
 ## What it shows
 
-One quoted line per update, showing what is **left** in each window and when it resets:
+One line per update with what is **left** in each window and when it resets. Pick a `layout`:
 
-```
-> usage anthropic: session 14% left (1h12m) · week 59% left (3d4h) · 17:42 WIB
-> WARN usage anthropic: session 12% left (58m) · week 57% left (3d3h) · 18:03 WIB
-```
+| `layout` | Example |
+|---|---|
+| `bar` (default) | `-# 🟢 Claude · session ▰▰▰▰▱ 84% (3h36m) · week ▰▰▰▱▱ 56% (5d)` |
+| `subtext` | `-# 🟢 Claude · session 84% (3h36m) · week 56% (5d)` |
+| `quote` | `> Claude · session 84% left 3h36m · week 56% left 5d` |
+| `detail` | the multi-line view, same as `/usage-watch now` |
 
-`WARN` / `CRIT` appear once usage passes `warn_above_percent` / `critical_above_percent`.
-`/usage-watch now` still prints the detailed multi-line view.
+- `-# ` is Discord's small grey subtext; other surfaces show the line as plain text.
+- The dot turns 🟡 / 🔴 (or `WARN` / `CRIT` in `quote`) past `warn_above_percent` / `critical_above_percent`.
+- Model-only windows (e.g. a per-model weekly cap) are hidden until they reach the warning level.
+- Provider ids are shortened: `anthropic` / `claude-*` to `Claude`, `openai-codex` to `Codex`.
 
 ## When it shows up
 
@@ -50,6 +54,7 @@ Settings live under `plugins.entries.usage-watch.settings`:
 | `critical_above_percent` | `95` | critical level |
 | `only_when_above` | `true` | stay silent below the warning level |
 | `mode` | `repost` | `repost` = new one-line message per update, `edit` = edit the session's notice in place |
+| `layout` | `bar` | `bar`, `subtext`, `quote` or `detail` (see above) |
 | `enabled` | `true` | master switch (`/usage-watch on|off` overrides it per profile) |
 
 ```bash

@@ -29,9 +29,11 @@ DEFAULTS: dict[str, Any] = {
     "critical_above_percent": 95,
     "only_when_above": True,
     "mode": "repost",
+    "layout": "bar",
 }
 
 MODES = ("repost", "edit")
+LAYOUTS = ("bar", "subtext", "quote", "detail")
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off", ""}
@@ -75,6 +77,11 @@ def _as_mode(value: Any) -> str:
     return v if v in MODES else DEFAULTS["mode"]
 
 
+def _as_layout(value: Any) -> str:
+    v = str(value or "").strip().lower()
+    return v if v in LAYOUTS else DEFAULTS["layout"]
+
+
 def coerce_settings(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     """Tolerant settings parser: bad values fall back to defaults instead of raising."""
     raw = raw or {}
@@ -89,6 +96,7 @@ def coerce_settings(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
         ),
         "only_when_above": _as_bool(raw.get("only_when_above"), DEFAULTS["only_when_above"]),
         "mode": _as_mode(raw.get("mode")),
+        "layout": _as_layout(raw.get("layout")),
     }
     if cfg["critical_above_percent"] < cfg["warn_above_percent"]:
         cfg["critical_above_percent"] = cfg["warn_above_percent"]
@@ -310,24 +318,61 @@ def max_over(entries: list[tuple[str, Any]]) -> Optional[float]:
 
 
 def fmt_short(reset_at: Optional[datetime], now: datetime) -> str:
-    """'2h12m' / '3d4h' / '5m'; empty when unknown."""
-    text = fmt_reset(reset_at, now)
-    if not text:
+    """Compact reset time: '5d' when a day or more away, else '3h36m' / '12m'; empty when unknown."""
+    if reset_at is None:
         return ""
-    if text == "resets now":
+    if reset_at.tzinfo is None:
+        reset_at = reset_at.replace(tzinfo=timezone.utc)
+    secs = (reset_at - now).total_seconds()
+    if secs <= 0:
         return "now"
-    return text.replace("resets in ", "").replace(" ", "")
+    total_min = int(secs // 60)
+    days, rem = divmod(total_min, 24 * 60)
+    hours, minutes = divmod(rem, 60)
+    if days:
+        return f"{days}d"
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    return f"{max(minutes, 1)}m"
 
 
-_LEVEL_TAG = {WARNING: "WARN ", CRITICAL: "CRIT "}
+_PROVIDER_ALIASES = (("openai-codex", "Codex"), ("codex", "Codex"), ("anthropic", "Claude"), ("claude", "Claude"))
+_DOT = {OK: "🟢", WARNING: "🟡", CRITICAL: "🔴"}
+_TAG = {WARNING: "WARN ", CRITICAL: "CRIT "}
+
+
+def provider_label(provider: str) -> str:
+    """Short display name: anthropic / claude-* -> Claude, openai-codex -> Codex, else as-is."""
+    low = str(provider or "").lower()
+    for prefix, label in _PROVIDER_ALIASES:
+        if low.startswith(prefix):
+            return label
+    return str(provider)
 
 
 def _short_label(label: str) -> str:
     label = str(label or "").strip()
-    for prefix in ("Current ", "current "):
-        if label.startswith(prefix):
-            label = label[len(prefix):]
+    if label.lower().startswith("current "):
+        label = label[8:]
     return label.lower() or "window"
+
+
+def bar(left_pct: float, cells: int = 5) -> str:
+    filled = max(0, min(cells, round(left_pct / (100 / cells))))
+    return "▰" * filled + "▱" * (cells - filled)
+
+
+def _windows(snap: Any, warn: int):
+    """(label, used_pct_or_None, reset_at) to show. Model-only windows are hidden unless they reached
+    the warning level, so the line stays short."""
+    out = []
+    for w in getattr(snap, "windows", ()) or ():
+        pct = getattr(w, "used_percent", None)
+        pct = float(pct) if isinstance(pct, (int, float)) and pct == pct else None
+        if getattr(w, "scope", "account") == "model" and (pct is None or pct < warn):
+            continue
+        out.append((_short_label(w.label), pct, getattr(w, "reset_at", None)))
+    return out
 
 
 def render_compact(
@@ -335,26 +380,36 @@ def render_compact(
     *,
     level: Optional[str],
     now: datetime,
-    clock_label: str = "",
+    layout: str = "bar",
+    warn: int = 80,
     note: str = "",
+    clock_label: str = "",
 ) -> str:
-    """One quoted line showing what is LEFT per window, e.g.
-    ``> usage anthropic: session 14% left (1h12m) · week 59% left (3d4h) · 17:42 WIB``."""
-    parts = []
+    """One line showing what is LEFT per window. Layouts (Discord markdown; harmless elsewhere):
+
+    - bar:     ``-# 🟢 Claude · session ▰▰▰▰▱ 84% (3h36m) · week ▰▰▰▱▱ 56% (5d)``
+    - subtext: ``-# 🟢 Claude · session 84% (3h36m) · week 56% (5d)``
+    - quote:   ``> Claude · session 84% left 3h36m · week 56% left 5d``
+    """
+    providers = []
     for provider, snap in entries:
         wins = []
-        for w in getattr(snap, "windows", ()) or ():
-            pct = getattr(w, "used_percent", None)
-            if isinstance(pct, (int, float)) and pct == pct:
-                left = f"{max(0.0, 100.0 - float(pct)):.0f}% left"
+        for label, pct, reset_at in _windows(snap, warn):
+            reset = fmt_short(reset_at, now)
+            if pct is None:
+                wins.append(f"{label} n/a")
+                continue
+            left = max(0.0, 100.0 - pct)
+            if layout == "quote":
+                wins.append(f"{label} {left:.0f}% left" + (f" {reset}" if reset else ""))
+            elif layout == "bar":
+                wins.append(f"{label} {bar(left)} {left:.0f}%" + (f" ({reset})" if reset else ""))
             else:
-                left = "n/a"
-            reset = fmt_short(getattr(w, "reset_at", None), now)
-            scope = " model" if getattr(w, "scope", "account") == "model" else ""
-            wins.append(f"{_short_label(w.label)}{scope} {left}" + (f" ({reset})" if reset else ""))
-        parts.append(f"{provider}: " + (" · ".join(wins) if wins else "n/a"))
-    line = f"> {_LEVEL_TAG.get(level, '')}usage " + " | ".join(parts)
-    tail = [t for t in (clock_label, note) if t]
-    if tail:
-        line += " · " + " ".join(tail)
-    return line
+                wins.append(f"{label} {left:.0f}%" + (f" ({reset})" if reset else ""))
+        providers.append(" · ".join([provider_label(provider)] + (wins or ["n/a"])))
+    body = " | ".join(providers)
+    if note:
+        body += f" · {note}"
+    if layout == "quote":
+        return f"> {_TAG.get(level, '')}{body}"
+    return f"-# {_DOT.get(level or OK, _DOT[OK])} {body}"
