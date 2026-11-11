@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping, Optional
 
-logger = logging.getLogger("usage_watch")
+logger = logging.getLogger("hermes_cli.plugins.usage_watch")
 
 OK = "ok"
 WARNING = "warning"

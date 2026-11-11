@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover
         worst_level,
     )
 
-logger = logging.getLogger("usage_watch")
+logger = logging.getLogger("hermes_cli.plugins.usage_watch")
 
 PLUGIN_NAME = "usage-watch"
 _LOCK = threading.Lock()
