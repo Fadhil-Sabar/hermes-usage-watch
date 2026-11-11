@@ -37,3 +37,7 @@ config_schema:
     type: bool
     default: true
     description: "Stay silent while usage is below the warning level."
+  mode:
+    type: str
+    default: "repost"
+    description: "repost = each update is a new one-line message; edit = one message per session, edited in place."

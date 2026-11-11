@@ -49,6 +49,7 @@ def test_defaults_when_empty():
     assert cfg == {
         "enabled": True, "every_n_turns": 5, "idle_minutes": 5, "providers": ["auto"],
         "warn_above_percent": 80, "critical_above_percent": 95, "only_when_above": True,
+        "mode": "repost",
     }
 
 
@@ -282,6 +283,24 @@ def test_render_notice_handles_unknown_percent_and_note():
     assert "Usage OK" in text.splitlines()[0]
     assert "n/a" in text
     assert text.splitlines()[-1].startswith("idle refresh |")
+
+
+def test_mode_setting_tolerant():
+    assert core.coerce_settings({"mode": "EDIT"})["mode"] == "edit"
+    assert core.coerce_settings({"mode": "bogus"})["mode"] == "repost"
+
+
+def test_render_compact_one_line_shows_remaining():
+    snap = Snap(windows=(
+        W("Current session", 86.2, NOW + timedelta(hours=1, minutes=12)),
+        W("Current week", 41, NOW + timedelta(days=3, hours=4)),
+        W("Opus week", None, None, scope="model"),
+    ), plan="Max")
+    text = core.render_compact([("anthropic", snap)], level="warning", now=NOW, clock_label="17:00 WIB")
+    assert text == ("> WARN usage anthropic: session 14% left (1h12m) · week 59% left (3d4h)"
+                    " · opus week model n/a · 17:00 WIB")
+    ok = core.render_compact([("a", snap), ("b", Snap(windows=()))], level="ok", now=NOW, note="(idle)")
+    assert ok.startswith("> usage a: ") and " | b: n/a" in ok and ok.endswith(" · (idle)")
 
 
 # ---------------------------------------------------------------- turn flow (pure simulation)

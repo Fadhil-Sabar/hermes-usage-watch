@@ -5,18 +5,21 @@ active session when it gets high, with the time until the window resets.
 
 - **No LLM calls.** Usage is read through Hermes' own `agent.account_usage` fetchers, and the notice is
   posted with `ctx.post_message`, which writes a message into the session without a model turn.
-- **One notice per session.** Later updates edit that message in place instead of adding new ones.
+- **Two modes.** `repost` (default): every update is a new one-line message. `edit`: one notice per
+  session, edited in place.
 - **Warnings only.** It never switches models or changes anything else.
 
 ## What it shows
 
+One quoted line per update, showing what is **left** in each window and when it resets:
+
 ```
-Usage WARNING: 86% used
-anthropic (Max)
-  - Current session: 86% · resets in 1h 12m
-  - Current week: 41% · resets in 3d 4h
-checked 17:42 WIB · warn 80% · critical 95%
+> usage anthropic: session 14% left (1h12m) · week 59% left (3d4h) · 17:42 WIB
+> WARN usage anthropic: session 12% left (58m) · week 57% left (3d3h) · 18:03 WIB
 ```
+
+`WARN` / `CRIT` appear once usage passes `warn_above_percent` / `critical_above_percent`.
+`/usage-watch now` still prints the detailed multi-line view.
 
 ## When it shows up
 
@@ -24,7 +27,7 @@ checked 17:42 WIB · warn 80% · critical 95%
   WARNING to CRITICAL). Escalations always show.
 - Every `every_n_turns` completed turns, a status line is shown or updated. With `only_when_above: true`
   (default) it stays silent while everything is below `warn_above_percent`.
-- After `idle_minutes` without a new turn, the session's existing notice is refreshed. This only edits an
+- After `idle_minutes` without a new turn, the session's latest notice is refreshed (edited, in both modes). This only edits an
   existing notice: a timer has no session context, so it cannot create a new message (see limitations).
 
 ## Install
@@ -46,6 +49,7 @@ Settings live under `plugins.entries.usage-watch.settings`:
 | `warn_above_percent` | `80` | warning level |
 | `critical_above_percent` | `95` | critical level |
 | `only_when_above` | `true` | stay silent below the warning level |
+| `mode` | `repost` | `repost` = new one-line message per update, `edit` = edit the session's notice in place |
 | `enabled` | `true` | master switch (`/usage-watch on|off` overrides it per profile) |
 
 ```bash

@@ -1,7 +1,7 @@
 """usage-watch: proactive provider account usage notices inside the active session.
 
-Makes no LLM call. Notices go through ``ctx.post_message`` (a keyed message in the bound session,
-edited in place on later updates). Usage comes from Hermes' own ``agent.account_usage`` fetchers.
+Makes no LLM call. Notices go through ``ctx.post_message`` as one compact line (a new message per
+update in ``repost`` mode, the default; edited in place in ``edit`` mode). Usage comes from Hermes' own ``agent.account_usage`` fetchers.
 Everything is wrapped so a failure here never reaches the agent loop.
 """
 
@@ -20,6 +20,7 @@ try:  # Hermes loads this package as a module; the fallback keeps odd loaders wo
         SessionWatch,
         UsageCache,
         coerce_settings,
+        render_compact,
         render_notice,
         should_notify,
         snapshot_level,
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover
         SessionWatch,
         UsageCache,
         coerce_settings,
+        render_compact,
         render_notice,
         should_notify,
         snapshot_level,
@@ -181,6 +183,11 @@ def _clock() -> tuple[datetime, str]:
         return now, now.strftime("%H:%M UTC")
 
 
+def _render_line(entries, cfg, *, note: str = "") -> str:
+    now, label = _clock()
+    return render_compact(entries, level=_levels(entries, cfg), now=now, clock_label=label, note=note)
+
+
 def _render(entries, cfg, *, note: str = "") -> str:
     now, label = _clock()
     return render_notice(
@@ -191,9 +198,11 @@ def _render(entries, cfg, *, note: str = "") -> str:
 # --------------------------------------------------------------------------- turn + idle
 
 
-def _publish(ctx: Any, st: SessionWatch, text: str) -> str:
-    """Edit the session's notice in place; post a new one only when there is no live handle."""
-    if st.handle is not None:
+def _publish(ctx: Any, st: SessionWatch, text: str, mode: str = "repost") -> str:
+    """``repost``: every update is a new message. ``edit``: edit the session's notice in place and
+    post a new one only when there is no live handle. The latest handle is kept either way, so the
+    idle refresh can update the most recent notice."""
+    if mode == "edit" and st.handle is not None:
         try:
             result = st.handle.edit(text)
             if result.get("ok"):
@@ -242,7 +251,7 @@ def _handle_turn(ctx: Any, sid: str) -> None:
     )
     outcome = "silent"
     if notify:
-        outcome = _publish(ctx, st, _render(entries, cfg))
+        outcome = _publish(ctx, st, _render_line(entries, cfg), cfg["mode"])
     _record(ctx, {"event": "turn", "session": sid[:12], "turn": turn, "providers": [p for p, _ in entries],
                   "level": level, "previous_level": prev, "notify": notify, "outcome": outcome,
                   "fetch": dict(_LAST_FETCH)})
@@ -266,7 +275,7 @@ def _on_idle(ctx: Any, sid: str) -> None:
         entries = _collect(cfg)
         if not entries:
             return
-        text = _render(entries, cfg, note="idle refresh")
+        text = _render_line(entries, cfg, note="(idle)")
         handle.edit(text)
     except Exception:  # noqa: BLE001
         logger.debug("usage-watch: idle refresh failed", exc_info=True)
@@ -341,7 +350,7 @@ def _command(raw_args: str) -> str:
             f"providers: {', '.join(_providers(cfg)) or '(none)'}",
             f"every_n_turns={cfg['every_n_turns']} idle_minutes={cfg['idle_minutes']} "
             f"warn={cfg['warn_above_percent']}% critical={cfg['critical_above_percent']}% "
-            f"only_when_above={cfg['only_when_above']}",
+            f"only_when_above={cfg['only_when_above']} mode={cfg['mode']}",
             f"last: {_last_decision(ctx)}",
             f"data_dir_import_error: {_DATA_DIR_ERROR or 'none'}",
             "usage: /usage-watch status | now | on | off",

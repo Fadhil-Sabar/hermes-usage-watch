@@ -28,7 +28,10 @@ DEFAULTS: dict[str, Any] = {
     "warn_above_percent": 80,
     "critical_above_percent": 95,
     "only_when_above": True,
+    "mode": "repost",
 }
+
+MODES = ("repost", "edit")
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off", ""}
@@ -67,6 +70,11 @@ def _as_providers(value: Any) -> list[str]:
     return items or ["auto"]
 
 
+def _as_mode(value: Any) -> str:
+    v = str(value or "").strip().lower()
+    return v if v in MODES else DEFAULTS["mode"]
+
+
 def coerce_settings(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     """Tolerant settings parser: bad values fall back to defaults instead of raising."""
     raw = raw or {}
@@ -80,6 +88,7 @@ def coerce_settings(raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
             raw.get("critical_above_percent"), DEFAULTS["critical_above_percent"], 1, 100
         ),
         "only_when_above": _as_bool(raw.get("only_when_above"), DEFAULTS["only_when_above"]),
+        "mode": _as_mode(raw.get("mode")),
     }
     if cfg["critical_above_percent"] < cfg["warn_above_percent"]:
         cfg["critical_above_percent"] = cfg["warn_above_percent"]
@@ -298,3 +307,54 @@ def render_notice(
 def max_over(entries: list[tuple[str, Any]]) -> Optional[float]:
     vals = [v for v in (max_percent(s) for _, s in entries) if v is not None]
     return max(vals) if vals else None
+
+
+def fmt_short(reset_at: Optional[datetime], now: datetime) -> str:
+    """'2h12m' / '3d4h' / '5m'; empty when unknown."""
+    text = fmt_reset(reset_at, now)
+    if not text:
+        return ""
+    if text == "resets now":
+        return "now"
+    return text.replace("resets in ", "").replace(" ", "")
+
+
+_LEVEL_TAG = {WARNING: "WARN ", CRITICAL: "CRIT "}
+
+
+def _short_label(label: str) -> str:
+    label = str(label or "").strip()
+    for prefix in ("Current ", "current "):
+        if label.startswith(prefix):
+            label = label[len(prefix):]
+    return label.lower() or "window"
+
+
+def render_compact(
+    entries: list[tuple[str, Any]],
+    *,
+    level: Optional[str],
+    now: datetime,
+    clock_label: str = "",
+    note: str = "",
+) -> str:
+    """One quoted line showing what is LEFT per window, e.g.
+    ``> usage anthropic: session 14% left (1h12m) · week 59% left (3d4h) · 17:42 WIB``."""
+    parts = []
+    for provider, snap in entries:
+        wins = []
+        for w in getattr(snap, "windows", ()) or ():
+            pct = getattr(w, "used_percent", None)
+            if isinstance(pct, (int, float)) and pct == pct:
+                left = f"{max(0.0, 100.0 - float(pct)):.0f}% left"
+            else:
+                left = "n/a"
+            reset = fmt_short(getattr(w, "reset_at", None), now)
+            scope = " model" if getattr(w, "scope", "account") == "model" else ""
+            wins.append(f"{_short_label(w.label)}{scope} {left}" + (f" ({reset})" if reset else ""))
+        parts.append(f"{provider}: " + (" · ".join(wins) if wins else "n/a"))
+    line = f"> {_LEVEL_TAG.get(level, '')}usage " + " | ".join(parts)
+    tail = [t for t in (clock_label, note) if t]
+    if tail:
+        line += " · " + " ".join(tail)
+    return line

@@ -98,16 +98,26 @@ def test_low_usage_silent_when_only_when_above(_isolate):
 
 
 def test_every_turn_posts_once_then_edits_in_place(_isolate):
-    ctx = FakeCtx(every_n_turns=1, idle_minutes=0, only_when_above=False)
+    ctx = FakeCtx(every_n_turns=1, idle_minutes=0, only_when_above=False, mode="edit")
     for _ in range(3):
         _turn(ctx)
     assert len(ctx.posts) == 1
     assert len(ctx.posts[0].texts) == 3  # one post, two in-place edits
-    assert "Usage OK" in ctx.posts[0].texts[-1]
+    assert ctx.posts[0].texts[-1].startswith("> usage anthropic:")
+
+
+def test_repost_mode_is_default_and_posts_one_line_each_time(_isolate):
+    ctx = FakeCtx(every_n_turns=2, idle_minutes=0, only_when_above=False)
+    for _ in range(4):
+        _turn(ctx)
+    assert len(ctx.posts) == 2 and all(len(h.texts) == 1 for h in ctx.posts)
+    text = ctx.posts[-1].texts[0]
+    assert "\n" not in text and text.startswith("> usage ") and "% left" in text
+    assert glue._SESSIONS["s1"].handle is ctx.posts[-1]  # idle refresh edits the latest one
 
 
 def test_every_n_turns_counter(_isolate):
-    ctx = FakeCtx(every_n_turns=3, idle_minutes=0, only_when_above=False)
+    ctx = FakeCtx(every_n_turns=3, idle_minutes=0, only_when_above=False, mode="edit")
     for _ in range(7):
         _turn(ctx)
     h = ctx.posts[0]
@@ -116,7 +126,7 @@ def test_every_n_turns_counter(_isolate):
 
 
 def test_escalation_warning_then_critical_edits_same_message(_isolate):
-    ctx = FakeCtx(every_n_turns=0, idle_minutes=0)
+    ctx = FakeCtx(every_n_turns=0, idle_minutes=0, mode="edit")
     state = _isolate
 
     def set_pct(p):  # the usage cache is 60s; clear it to simulate a fresh fetch
@@ -128,15 +138,15 @@ def test_escalation_warning_then_critical_edits_same_message(_isolate):
     assert ctx.posts == []
     set_pct(85)
     _turn(ctx)
-    assert len(ctx.posts) == 1 and "WARNING" in ctx.posts[0].texts[-1]
+    assert len(ctx.posts) == 1 and "> WARN usage" in ctx.posts[0].texts[-1]
     set_pct(97)
     _turn(ctx)
     assert len(ctx.posts) == 1
-    assert "CRITICAL" in ctx.posts[0].texts[-1]
+    assert "> CRIT usage" in ctx.posts[0].texts[-1]
 
 
 def test_refused_edit_falls_back_to_a_new_post(_isolate):
-    ctx = FakeCtx(every_n_turns=1, idle_minutes=0, only_when_above=False)
+    ctx = FakeCtx(every_n_turns=1, idle_minutes=0, only_when_above=False, mode="edit")
     _turn(ctx)
     ctx.posts[0].edit_ok = False  # message deleted or edit refused
     _turn(ctx)
@@ -195,7 +205,7 @@ def test_idle_refresh_edits_existing_notice_only(_isolate):
     h = ctx.posts[0]
     _isolate["pct"] = 60
     glue._on_idle(ctx, "s1")
-    assert h.texts[-1].splitlines()[-1].startswith("idle refresh |")
+    assert h.texts[-1].startswith("> usage ") and h.texts[-1].endswith(" WIB (idle)")
     # no handle yet: idle must not post anything
     glue._SESSIONS["other"] = glue.SessionWatch()
     glue._on_idle(ctx, "other")
@@ -215,7 +225,7 @@ def test_session_finalize_clears_state(_isolate):
 def test_state_survives_across_turns_and_edits_in_place(_isolate):
     # Regression: state was dropped every turn (on_session_end fires per run_conversation),
     # so the counter stuck at 1 and every notice was a fresh post.
-    ctx = FakeCtx(every_n_turns=2, idle_minutes=0, only_when_above=False)
+    ctx = FakeCtx(every_n_turns=2, idle_minutes=0, only_when_above=False, mode="edit")
     for _ in range(4):
         _turn(ctx)
     assert glue._SESSIONS["s1"].turns == 4
