@@ -201,10 +201,13 @@ def _handle_turn(ctx: Any, sid: str) -> None:
     with _LOCK:
         prev = st.level
         st.level = level
-    if level is None or not should_notify(
+    notify = level is not None and should_notify(
         turn=turn, every_n=cfg["every_n_turns"], level=level, prev_level=prev,
         only_when_above=cfg["only_when_above"],
-    ):
+    )
+    logger.info("usage-watch: turn=%d session=%s providers=%d level=%s notify=%s",
+                turn, sid[:12], len(entries), level, notify)
+    if not notify:
         return
     _publish(ctx, st, _render(entries, cfg))
 
