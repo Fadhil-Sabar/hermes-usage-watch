@@ -201,13 +201,32 @@ def test_backoff_is_capped():
     assert entry.failures >= 12
 
 
-def test_empty_provider_is_skipped_and_retried_slowly():
+def test_none_is_transient_not_cached_for_long():
+    """fetch_account_usage returns None on swallowed failures too, so None must not stick for minutes."""
     clock = FakeClock()
     calls = []
 
     def fetch(p):
         calls.append(1)
         return None
+
+    c = _cache(fetch, clock)
+    assert c.get("p") == (None, "error")
+    clock.t += 61  # first failure waits ttl * 2 = 120 s
+    c.get("p")
+    assert len(calls) == 1
+    clock.t += 60
+    c.get("p")
+    assert len(calls) == 2
+
+
+def test_stable_unavailable_reason_is_retried_slowly():
+    clock = FakeClock()
+    calls = []
+
+    def fetch(p):
+        calls.append(1)
+        return Snap(unavailable_reason="Anthropic account limits are only available for OAuth-backed accounts.")
 
     c = _cache(fetch, clock)
     assert c.get("nope") == (None, "empty")

@@ -44,6 +44,7 @@ _LOCK = threading.Lock()
 _SESSIONS: dict[str, SessionWatch] = {}
 _CACHE: Optional[UsageCache] = None
 _CTX: Any = None
+_LAST_FETCH: dict[str, str] = {}
 _DATA_DIR_ERROR: Optional[str] = None
 
 
@@ -158,7 +159,8 @@ def _collect(cfg: dict[str, Any], *, force: bool = False) -> list[tuple[str, Any
     """[(provider, snapshot)] for providers with usage data. Providers without data are skipped."""
     out = []
     for provider in _providers(cfg):
-        snap, _status = _cache().get(provider, force=force)
+        snap, status = _cache().get(provider, force=force)
+        _LAST_FETCH[provider] = status
         if snap is not None and getattr(snap, "available", True):
             out.append((provider, snap))
     return out
@@ -242,7 +244,8 @@ def _handle_turn(ctx: Any, sid: str) -> None:
     if notify:
         outcome = _publish(ctx, st, _render(entries, cfg))
     _record(ctx, {"event": "turn", "session": sid[:12], "turn": turn, "providers": [p for p, _ in entries],
-                  "level": level, "previous_level": prev, "notify": notify, "outcome": outcome})
+                  "level": level, "previous_level": prev, "notify": notify, "outcome": outcome,
+                  "fetch": dict(_LAST_FETCH)})
 
 
 def _on_idle(ctx: Any, sid: str) -> None:
@@ -302,7 +305,7 @@ def _last_decision(ctx: Any) -> str:
             return "no turn recorded yet"
         d = json.loads(path.read_text(encoding="utf-8"))
         return (f"{d.get('at')} session={d.get('session')} turn={d.get('turn')} level={d.get('level')} "
-                f"notify={d.get('notify')} outcome={d.get('outcome')}")
+                f"notify={d.get('notify')} outcome={d.get('outcome')} fetch={d.get('fetch')}")
     except Exception:  # noqa: BLE001
         return "unavailable"
 

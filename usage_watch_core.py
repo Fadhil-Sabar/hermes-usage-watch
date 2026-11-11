@@ -197,10 +197,16 @@ class UsageCache:
             logger.debug("usage-watch fetch failed for %s: %s", provider, exc)
             return self._store(provider, previous, now, failures + 1, "error", self._ttl)
 
-        if snap is None or not getattr(snap, "available", True):
+        if snap is None:
+            # fetch_account_usage returns None both for "no usage support" and for failures it
+            # swallows (timeouts, network). Treat it as transient: short backoff, last good data kept.
+            return self._store(provider, previous, now, failures + 1, "error", self._ttl)
+
+        if not getattr(snap, "available", True):
             reason = str(getattr(snap, "unavailable_reason", "") or "")
             if "429" in reason or "rate" in reason.lower():
                 return self._store(provider, previous, now, failures + 1, "error", self._ttl)
+            # a stable answer (e.g. "only OAuth accounts have limits"): retry rarely
             return self._store(provider, None, now, 0, "empty", self._empty_ttl)
 
         return self._store(provider, snap, now, 0, "fresh", self._ttl)
