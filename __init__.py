@@ -98,6 +98,18 @@ def _set_enabled(ctx: Any, value: bool) -> None:
     path.write_text(json.dumps({"enabled": value}), encoding="utf-8")
 
 
+def _record(ctx: Any, data: dict[str, Any]) -> None:
+    """Last-decision trace in plugin-data/usage-watch/last.json (shown by /usage-watch status)."""
+    try:
+        from plugins.plugin_storage import plugin_data_dir
+
+        data = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **data}
+        path = plugin_data_dir(PLUGIN_NAME) / "last.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        logger.debug("usage-watch: cannot record decision", exc_info=True)
+
+
 def _providers(cfg: dict[str, Any]) -> list[str]:
     names = []
     for name in cfg["providers"]:
@@ -156,23 +168,23 @@ def _render(entries, cfg, *, note: str = "") -> str:
 # --------------------------------------------------------------------------- turn + idle
 
 
-def _publish(ctx: Any, st: SessionWatch, text: str) -> None:
+def _publish(ctx: Any, st: SessionWatch, text: str) -> str:
     """Edit the session's notice in place; post a new one only when there is no live handle."""
     if st.handle is not None:
         try:
             result = st.handle.edit(text)
             if result.get("ok"):
-                return
+                return "edited"
         except Exception:  # noqa: BLE001
             logger.debug("usage-watch: edit failed", exc_info=True)
         st.handle = None  # refused or gone: fall through and post a fresh message
     handle = ctx.post_message(text)
     if getattr(handle, "ok", False):
         st.handle = handle
-    else:
-        # info, not debug: a refusal here is the one thing a user needs to see when no notice appears
-        logger.info("usage-watch: post_message refused: %s %s", getattr(handle, "error", None),
-                    getattr(handle, "result", {}).get("detail", ""))
+        return "posted"
+    # info, not debug: a refusal here is the one thing a user needs to see when no notice appears
+    logger.info("usage-watch: post_message refused: %s", getattr(handle, "error", None))
+    return f"refused:{getattr(handle, 'error', None)}"
 
 
 def _arm_idle(ctx: Any, sid: str, st: SessionWatch, cfg: dict[str, Any]) -> None:
@@ -205,11 +217,11 @@ def _handle_turn(ctx: Any, sid: str) -> None:
         turn=turn, every_n=cfg["every_n_turns"], level=level, prev_level=prev,
         only_when_above=cfg["only_when_above"],
     )
-    logger.info("usage-watch: turn=%d session=%s providers=%d level=%s notify=%s",
-                turn, sid[:12], len(entries), level, notify)
-    if not notify:
-        return
-    _publish(ctx, st, _render(entries, cfg))
+    outcome = "silent"
+    if notify:
+        outcome = _publish(ctx, st, _render(entries, cfg))
+    _record(ctx, {"event": "turn", "session": sid[:12], "turn": turn, "providers": [p for p, _ in entries],
+                  "level": level, "previous_level": prev, "notify": notify, "outcome": outcome})
 
 
 def _on_idle(ctx: Any, sid: str) -> None:
@@ -257,6 +269,20 @@ def _on_session_end(**kwargs: Any) -> None:
         st.timer.cancel()
 
 
+def _last_decision(ctx: Any) -> str:
+    try:
+        from plugins.plugin_storage import plugin_data_dir
+
+        path = plugin_data_dir(PLUGIN_NAME) / "last.json"
+        if not path.exists():
+            return "no turn recorded yet"
+        d = json.loads(path.read_text(encoding="utf-8"))
+        return (f"{d.get('at')} session={d.get('session')} turn={d.get('turn')} level={d.get('level')} "
+                f"notify={d.get('notify')} outcome={d.get('outcome')}")
+    except Exception:  # noqa: BLE001
+        return "unavailable"
+
+
 def _command(raw_args: str) -> str:
     ctx = _CTX
     if ctx is None:
@@ -281,6 +307,7 @@ def _command(raw_args: str) -> str:
             f"every_n_turns={cfg['every_n_turns']} idle_minutes={cfg['idle_minutes']} "
             f"warn={cfg['warn_above_percent']}% critical={cfg['critical_above_percent']}% "
             f"only_when_above={cfg['only_when_above']}",
+            f"last: {_last_decision(ctx)}",
             "usage: /usage-watch status | now | on | off",
         ])
     return "usage: /usage-watch status | now | on | off"
