@@ -242,10 +242,11 @@ def _on_idle(ctx: Any, sid: str) -> None:
 def _on_post_llm_call(**kwargs: Any) -> None:
     try:
         sid = str(kwargs.get("session_id") or "default")
+        logger.info("usage-watch: post_llm_call session=%s platform=%s", sid[:12], kwargs.get("platform"))
         if _CTX is not None:
             _handle_turn(_CTX, sid)
-    except Exception:  # noqa: BLE001
-        logger.debug("usage-watch: post_llm_call failed", exc_info=True)
+    except Exception:  # noqa: BLE001 - never raise into the agent loop; warn so it is visible
+        logger.warning("usage-watch: post_llm_call failed", exc_info=True)
 
 
 def _on_session_end(**kwargs: Any) -> None:
