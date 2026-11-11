@@ -69,6 +69,7 @@ def _isolate(monkeypatch, tmp_path):
     glue._CACHE = None
     glue._SESSIONS.clear()
     monkeypatch.setattr(glue, "_override_path", lambda ctx: tmp_path / "state.json")
+    monkeypatch.setattr(glue, "_data_dir", lambda: tmp_path)  # never touch the real hermes home
     monkeypatch.setattr(glue, "_active_provider", lambda: "anthropic")
     state = {"pct": 10.0, "raise": False}
     def fake_fetch(provider):

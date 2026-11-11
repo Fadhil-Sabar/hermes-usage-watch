@@ -11,6 +11,7 @@ import json
 import logging
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 try:  # Hermes loads this package as a module; the fallback keeps odd loaders working.
@@ -43,6 +44,7 @@ _LOCK = threading.Lock()
 _SESSIONS: dict[str, SessionWatch] = {}
 _CACHE: Optional[UsageCache] = None
 _CTX: Any = None
+_DATA_DIR_ERROR: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- host adapters
@@ -73,10 +75,25 @@ def _settings(ctx: Any) -> dict[str, Any]:
     return coerce_settings(raw)
 
 
-def _override_path(ctx: Any):
-    from plugins.plugin_storage import plugin_data_dir  # public plugin API
+def _data_dir():
+    """<hermes home>/plugin-data/usage-watch/. Tries the plugin storage API first, then the core
+    home helper (both public); the first failure is kept in ``_DATA_DIR_ERROR`` for diagnosis."""
+    global _DATA_DIR_ERROR
+    try:
+        from plugins.plugin_storage import plugin_data_dir
 
-    return plugin_data_dir(PLUGIN_NAME) / "state.json"
+        return plugin_data_dir(PLUGIN_NAME)
+    except Exception as exc:  # noqa: BLE001
+        _DATA_DIR_ERROR = _DATA_DIR_ERROR or repr(exc)[:200]
+    from hermes_constants import get_hermes_home
+
+    d = get_hermes_home() / "plugin-data" / PLUGIN_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _override_path(ctx: Any):
+    return _data_dir() / "state.json"
 
 
 def _enabled(ctx: Any, cfg: dict[str, Any]) -> bool:
@@ -101,18 +118,14 @@ def _set_enabled(ctx: Any, value: bool) -> None:
 def _record(ctx: Any, data: dict[str, Any]) -> None:
     """Last-decision trace in plugin-data/usage-watch/last.json (shown by /usage-watch status)."""
     try:
-        from plugins.plugin_storage import plugin_data_dir
-
         data = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **data}
-        path = plugin_data_dir(PLUGIN_NAME) / "last.json"
+        path = _data_dir() / "last.json"
         path.write_text(json.dumps(data), encoding="utf-8")
     except Exception:  # noqa: BLE001
         import traceback
 
         try:  # keep the failure inspectable: plugin-data/usage-watch/errors.log
-            from plugins.plugin_storage import plugin_data_dir
-
-            with (plugin_data_dir(PLUGIN_NAME) / "errors.log").open("a", encoding="utf-8") as fh:
+            with (_data_dir() / "errors.log").open("a", encoding="utf-8") as fh:
                 fh.write(datetime.now(timezone.utc).isoformat(timespec="seconds") + "\n" + traceback.format_exc()[-1500:] + "\n")
         except Exception:  # noqa: BLE001
             pass
@@ -284,9 +297,7 @@ def _on_session_end(**kwargs: Any) -> None:
 
 def _last_decision(ctx: Any) -> str:
     try:
-        from plugins.plugin_storage import plugin_data_dir
-
-        path = plugin_data_dir(PLUGIN_NAME) / "last.json"
+        path = _data_dir() / "last.json"
         if not path.exists():
             return "no turn recorded yet"
         d = json.loads(path.read_text(encoding="utf-8"))
@@ -321,6 +332,7 @@ def _command(raw_args: str) -> str:
             f"warn={cfg['warn_above_percent']}% critical={cfg['critical_above_percent']}% "
             f"only_when_above={cfg['only_when_above']}",
             f"last: {_last_decision(ctx)}",
+            f"data_dir_import_error: {_DATA_DIR_ERROR or 'none'}",
             "usage: /usage-watch status | now | on | off",
         ])
     return "usage: /usage-watch status | now | on | off"
