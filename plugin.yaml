@@ -1,0 +1,39 @@
+name: usage-watch
+version: "0.1.0"
+description: "Shows your provider account usage (Claude, Codex, ...) in the active session when it gets high, with reset times. No LLM calls."
+author: Fadhil-Sabar
+requires_hermes: ">=0.23.1"
+provides_hooks:
+  - post_llm_call
+  - on_session_end
+provides_commands:
+  - usage-watch
+config_schema:
+  enabled:
+    type: bool
+    default: true
+    description: "Master switch. /usage-watch on|off overrides it per profile."
+  every_n_turns:
+    type: int
+    default: 5
+    description: "Show a status notice every N completed turns (0 = only on threshold crossings)."
+  idle_minutes:
+    type: int
+    default: 5
+    description: "After this many idle minutes, refresh the session's existing notice (0 = off). Never creates a new message."
+  providers:
+    type: list
+    default: ["auto"]
+    description: "Providers to watch. 'auto' = model.provider from the profile config."
+  warn_above_percent:
+    type: int
+    default: 80
+    description: "Warning level, percent of the window used."
+  critical_above_percent:
+    type: int
+    default: 95
+    description: "Critical level, percent of the window used."
+  only_when_above:
+    type: bool
+    default: true
+    description: "Stay silent while usage is below the warning level."
