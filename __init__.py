@@ -252,13 +252,18 @@ def _on_idle(ctx: Any, sid: str) -> None:
 
 
 def _on_post_llm_call(**kwargs: Any) -> None:
+    sid = str(kwargs.get("session_id") or "default")
     try:
-        sid = str(kwargs.get("session_id") or "default")
-        logger.info("usage-watch: post_llm_call session=%s platform=%s", sid[:12], kwargs.get("platform"))
-        if _CTX is not None:
-            _handle_turn(_CTX, sid)
-    except Exception:  # noqa: BLE001 - never raise into the agent loop; warn so it is visible
+        if _CTX is None:
+            _record(None, {"event": "hook_without_context", "session": sid[:12]})
+            return
+        _handle_turn(_CTX, sid)
+    except Exception:  # noqa: BLE001 - never raise into the agent loop; keep the trace visible
         logger.warning("usage-watch: post_llm_call failed", exc_info=True)
+        if _CTX is not None:
+            import traceback
+
+            _record(_CTX, {"event": "error", "session": sid[:12], "trace": traceback.format_exc()[-900:]})
 
 
 def _on_session_end(**kwargs: Any) -> None:
