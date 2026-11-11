@@ -170,7 +170,9 @@ def _publish(ctx: Any, st: SessionWatch, text: str) -> None:
     if getattr(handle, "ok", False):
         st.handle = handle
     else:
-        logger.debug("usage-watch: post_message refused: %s", getattr(handle, "error", None))
+        # info, not debug: a refusal here is the one thing a user needs to see when no notice appears
+        logger.info("usage-watch: post_message refused: %s %s", getattr(handle, "error", None),
+                    getattr(handle, "result", {}).get("detail", ""))
 
 
 def _arm_idle(ctx: Any, sid: str, st: SessionWatch, cfg: dict[str, Any]) -> None:
