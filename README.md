@@ -72,7 +72,23 @@ structured windows, so there is nothing to threshold.
 - "No usage data" results are retried after 10 minutes.
 - Exceptions and rate limits (429) back off exponentially, capped at 15 minutes. The last good
   snapshot keeps being shown meanwhile.
-- Nothing raises into the agent loop. Hook and timer errors are logged at debug level.
+- Nothing raises into the agent loop. Hook errors are logged as warnings, state-file errors go to `errors.log`.
+
+## Troubleshooting
+
+- `/usage-watch status` prints the last turn decision (level, whether it notified, the post/edit outcome,
+  and what each provider's fetch returned: fresh, cached, backoff, empty or error). The same record is in
+  `<hermes home>/plugin-data/usage-watch/last.json`.
+- `errors.log` in the same folder keeps tracebacks from the state code.
+- After `hermes plugins update`, a running gateway keeps the old code until it restarts:
+  `hermes gateway restart` from a shell outside the gateway.
+
+## Where notices appear
+
+- CLI one-shot (`hermes chat -q`) and Desktop/TUI (local sessions): posted as a keyed notification the viewer replaces in place.
+- Messaging gateways (Telegram, Discord, ...): posted as a chat message and edited through the adapter.
+- API server: not supported. It has no message surface for plugins, so posts are refused (`send_failed`)
+  and logged. Slash commands are not routed there either.
 
 ## Limitations (honest)
 
