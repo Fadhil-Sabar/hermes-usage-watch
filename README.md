@@ -22,7 +22,7 @@ One line per update with what is **left** in each window and when it resets. Pic
 
 - `-# ` is Discord's small grey subtext; other surfaces show the line as plain text.
 - The dot turns 🟡 / 🔴 (or `WARN` / `CRIT` in `quote`) past `warn_above_percent` / `critical_above_percent`.
-- Model-only windows (e.g. a per-model weekly cap) are hidden until they reach the warning level.
+- Secondary windows (model-only, or per-model caps such as `Fable week`) are hidden until they reach the warning level.
 - Provider ids are shortened: `anthropic` / `claude-*` to `Claude`, `openai-codex` to `Codex`.
 
 ## When it shows up

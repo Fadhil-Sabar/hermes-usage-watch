@@ -294,7 +294,7 @@ def _compact_snap():
     return Snap(windows=(
         W("Current session", 16, NOW + timedelta(hours=3, minutes=36)),
         W("Current week", 44, NOW + timedelta(days=5, hours=11)),
-        W("Fable week", 1, NOW + timedelta(days=5), scope="model"),
+        W("Fable week", 1, NOW + timedelta(days=5)),  # account scope, as Claude reports it
     ), plan="Max")
 
 

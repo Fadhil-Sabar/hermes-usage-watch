@@ -363,13 +363,19 @@ def bar(left_pct: float, cells: int = 5) -> str:
 
 
 def _windows(snap: Any, warn: int):
-    """(label, used_pct_or_None, reset_at) to show. Model-only windows are hidden unless they reached
-    the warning level, so the line stays short."""
+    """(label, used_pct_or_None, reset_at) to show. Secondary windows (model-only, or per-model caps
+    next to "Current ..." windows) are hidden until they reach the warning level."""
     out = []
-    for w in getattr(snap, "windows", ()) or ():
+    windows = list(getattr(snap, "windows", ()) or ())
+    # Claude reports per-model caps ("Fable week") with account scope next to "Current session/week";
+    # when "Current ..." windows exist, the other ones count as secondary.
+    has_current = any(str(getattr(w, "label", "")).lower().startswith("current ") for w in windows)
+    for w in windows:
         pct = getattr(w, "used_percent", None)
         pct = float(pct) if isinstance(pct, (int, float)) and pct == pct else None
-        if getattr(w, "scope", "account") == "model" and (pct is None or pct < warn):
+        secondary = getattr(w, "scope", "account") == "model" or (
+            has_current and not str(getattr(w, "label", "")).lower().startswith("current "))
+        if secondary and (pct is None or pct < warn):
             continue
         out.append((_short_label(w.label), pct, getattr(w, "reset_at", None)))
     return out
