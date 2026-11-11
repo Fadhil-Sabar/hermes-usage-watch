@@ -106,7 +106,7 @@ structured windows, so there is nothing to threshold.
 - Network: calls the provider usage endpoints through Hermes' fetchers (for Anthropic, the OAuth usage
   API). It uses the credentials Hermes already holds. It does not read credential files itself.
 - Background: one daemon `threading.Timer` per active session (idle refresh), cancelled on
-  `on_session_end`.
+  `on_session_finalize` (session teardown).
 - Reads: `config.yaml` (read-only, to find `model.provider`). Writes: a tiny `state.json` under
   `plugin-data/usage-watch/`, only when you run `/usage-watch on|off`.
 - No telemetry.
