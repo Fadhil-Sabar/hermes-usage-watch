@@ -1,5 +1,5 @@
 name: usage-watch
-version: "0.1.0"
+version: "0.2.0"
 description: "Shows your provider account usage (Claude, Codex, ...) in the active session when it gets high, with reset times. No LLM calls."
 author: Fadhil-Sabar
 requires_hermes: ">=0.23.1"
